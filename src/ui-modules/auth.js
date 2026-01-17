@@ -13,31 +13,34 @@ const DEFAULT_PASSWORD = 'admin123';
 
 /**
  * 读取密码文件内容
- * 如果文件不存在或读取失败，返回默认密码
+ * 优先顺序:
+ * 1. 环境变量 REQUIRED_API_KEY
+ * 2. configs/pwd 文件内容
+ * 3. 默认密码 'admin123'
  */
 export async function readPasswordFile() {
+    // 1. Check Environment Variable
+    if (process.env.REQUIRED_API_KEY) {
+        // console.log('[Auth] Using password from environment variable REQUIRED_API_KEY');
+        return process.env.REQUIRED_API_KEY;
+    }
+
+    // 2. Check File
     const pwdFilePath = path.join(process.cwd(), 'configs', 'pwd');
     try {
-        // 使用异步方式检查文件是否存在并读取，避免竞态条件
         const password = await fs.readFile(pwdFilePath, 'utf8');
         const trimmedPassword = password.trim();
-        // 如果密码文件为空，使用默认密码
-        if (!trimmedPassword) {
-            console.log('[Auth] Password file is empty, using default password: ' + DEFAULT_PASSWORD);
-            return DEFAULT_PASSWORD;
+        if (trimmedPassword) {
+            // console.log('[Auth] Using password from file');
+            return trimmedPassword;
         }
-        console.log('[Auth] Successfully read password file');
-        return trimmedPassword;
     } catch (error) {
-        // ENOENT means file does not exist, which is normal
-        if (error.code === 'ENOENT') {
-            console.log('[Auth] Password file does not exist, using default password: ' + DEFAULT_PASSWORD);
-        } else {
-            console.error('[Auth] Failed to read password file:', error.code || error.message);
-            console.log('[Auth] Using default password: ' + DEFAULT_PASSWORD);
-        }
-        return DEFAULT_PASSWORD;
+        // Ignore file read errors
     }
+
+    // 3. Fallback
+    console.log('[Auth] No password configured, using default: ' + DEFAULT_PASSWORD);
+    return DEFAULT_PASSWORD;
 }
 
 /**
@@ -45,9 +48,10 @@ export async function readPasswordFile() {
  */
 export async function validateCredentials(password) {
     const storedPassword = await readPasswordFile();
-    console.log('[Auth] Validating password, stored password length:', storedPassword ? storedPassword.length : 0, ', input password length:', password ? password.length : 0);
     const isValid = storedPassword && password === storedPassword;
-    console.log('[Auth] Password validation result:', isValid);
+    if (!isValid) {
+        console.warn('[Auth] Login failed: Invalid password');
+    }
     return isValid;
 }
 
@@ -130,13 +134,13 @@ export async function verifyToken(token) {
     if (!tokenInfo) {
         return null;
     }
-    
+
     // 检查是否过期
     if (Date.now() > tokenInfo.expiryTime) {
         await deleteToken(token);
         return null;
     }
-    
+
     return tokenInfo;
 }
 
@@ -167,14 +171,14 @@ export async function cleanupExpiredTokens() {
     const tokenStore = await readTokenStore();
     const now = Date.now();
     let hasChanges = false;
-    
+
     for (const token in tokenStore.tokens) {
         if (now > tokenStore.tokens[token].expiryTime) {
             delete tokenStore.tokens[token];
             hasChanges = true;
         }
     }
-    
+
     if (hasChanges) {
         await writeTokenStore(tokenStore);
     }
@@ -185,14 +189,19 @@ export async function cleanupExpiredTokens() {
  */
 export async function checkAuth(req) {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        // console.warn('[Auth] debug: Missing or invalid Authorization header');
         return false;
     }
 
     const token = authHeader.substring(7);
     const tokenInfo = await verifyToken(token);
-    
+
+    if (tokenInfo === null) {
+        console.warn(`[Auth] Token validation failed. Token=${token.substring(0, 6)}...`);
+    }
+
     return tokenInfo !== null;
 }
 
@@ -209,7 +218,7 @@ export async function handleLoginRequest(req, res) {
     try {
         const requestData = await parseRequestBody(req);
         const { password } = requestData;
-        
+
         if (!password) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: false, message: 'Password cannot be empty' }));
@@ -217,12 +226,12 @@ export async function handleLoginRequest(req, res) {
         }
 
         const isValid = await validateCredentials(password);
-        
+
         if (isValid) {
             // Generate simple token
             const token = generateToken();
             const expiryTime = getExpiryTime();
-            
+
             // Store token info to local file
             await saveToken(token, {
                 username: 'admin',
