@@ -2547,12 +2547,30 @@ function sanitizeFileName(email) {
  * @returns {Promise<Object>} 导入结果
  */
 export async function importKiroManagerData(data) {
-    if (!data || !data.accounts || !Array.isArray(data.accounts)) {
-        throw new Error('Invalid data format: "accounts" array not found.');
+    let accountsToImport = [];
+
+    // Case 1: Standard Manager Export (has "accounts" array)
+    if (data && data.accounts && Array.isArray(data.accounts)) {
+        accountsToImport = data.accounts;
+    }
+    // Case 2: Single Account Export (Script Processed or Raw Credential)
+    // Check for essential credential fields like refreshToken or accessToken
+    else if (data && (data.refreshToken || data.credentials || data.accessToken)) {
+        console.log('[Kiro Import] Detected single account file format');
+        // Wrap it to match the expected structure
+        accountsToImport = [{
+            // Try to guess email or use a placeholder
+            email: data.email || `imported-account-${Date.now()}@local`,
+            nickname: data.nickname || 'Imported Account',
+            credentials: data.credentials || data // If root IS the credential, use data
+        }];
+    }
+    else {
+        throw new Error('Invalid data format: Expected "accounts" array or valid credential object.');
     }
 
     const results = {
-        total: data.accounts.length,
+        total: accountsToImport.length,
         success: 0,
         skipped: 0,
         details: []
@@ -2587,7 +2605,7 @@ export async function importKiroManagerData(data) {
     }
     const existingPool = providerPools['claude-kiro-oauth'];
 
-    for (const account of data.accounts) {
+    for (const account of accountsToImport) {
         try {
             if (!account.credentials || !account.credentials.refreshToken) {
                 results.skipped++;
