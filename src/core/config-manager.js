@@ -85,6 +85,15 @@ export async function initializeConfig(args = process.argv.slice(2), configFileP
         console.log('[Config] Using default configuration.');
     }
 
+    // Environment Variables Override (Standard 12-factor app)
+    if (process.env.REQUIRED_API_KEY) currentConfig.REQUIRED_API_KEY = process.env.REQUIRED_API_KEY;
+    if (process.env.SERVER_PORT) currentConfig.SERVER_PORT = parseInt(process.env.SERVER_PORT, 10);
+    if (process.env.HOST) currentConfig.HOST = process.env.HOST;
+    if (process.env.MODEL_PROVIDER) currentConfig.MODEL_PROVIDER = process.env.MODEL_PROVIDER;
+    if (process.env.SYSTEM_PROMPT_FILE) currentConfig.SYSTEM_PROMPT_FILE_PATH = process.env.SYSTEM_PROMPT_FILE;
+    if (process.env.SYSTEM_PROMPT_MODE) currentConfig.SYSTEM_PROMPT_MODE = process.env.SYSTEM_PROMPT_MODE;
+    if (process.env.CRON_REFRESH_TOKEN) currentConfig.CRON_REFRESH_TOKEN = process.env.CRON_REFRESH_TOKEN.toLowerCase() === 'true';
+
     // Parse command-line arguments
     for (let i = 0; i < args.length; i++) {
         if (args[i] === '--api-key') {
