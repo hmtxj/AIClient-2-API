@@ -1,0 +1,43 @@
+# 使用官方Node.js运行时作为基础镜像
+FROM node:20-alpine
+
+# 设置 Hugging Face 要求的用户 ID
+RUN adduser -D -u 1000 user
+
+# 安装必要的系统工具
+RUN apk add --no-cache tar git
+
+# 设置工作目录
+WORKDIR /app
+
+# 复制package.json和package-lock.json
+COPY package*.json ./
+
+# 安装依赖
+RUN npm install
+
+# 复制源代码
+COPY . .
+
+# 创建必要的目录并设置权限
+# Hugging Face 要求只能写入 /app 目录，并且所有者必须是 user (1000)
+RUN mkdir -p /app/logs /app/configs && \
+    mkdir -p /app/configs/kiro && \
+    chown -R user:user /app
+
+# 切换到非 root 用户
+USER user
+
+# 暴露 Hugging Face 默认端口
+EXPOSE 7860
+
+# 设置环境变量
+ENV PORT=7860
+ENV HOST=0.0.0.0
+# 数据持久化目录（HF即使重启也会保留吗？通常建议挂载Dataset，这里先确保存储在本地）
+# 如果使用了 HF Persistent Storage，通常挂载在 /data
+# 这里主要确保应用能跑起来
+
+# 启动命令
+# 强制指定端口为 7860
+CMD ["node", "src/core/master.js", "--port", "7860", "--host", "0.0.0.0"]
