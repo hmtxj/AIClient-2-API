@@ -844,8 +844,8 @@ async function handleKiroImport() {
                 return;
             }
 
-            // 发送请求
-            const result = await window.apiClient.post('/api/kiro/import-manager-data', data);
+            // 发送请求 - 注意: apiClient.post 已经添加 /api 前缀
+            const result = await window.apiClient.post('/kiro/import-manager-data', data);
 
             if (result.success) {
                 showToast(t('common.success'), `成功导入 ${result.successCount} 个账号`, 'success');
